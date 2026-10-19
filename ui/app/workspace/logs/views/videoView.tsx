@@ -46,7 +46,8 @@ export default function VideoView({ videoInput, videoOutput, videoListOutput, re
 	const downloadOutput = isDownload && videoOutput ? (videoOutput as BifrostVideoDownloadOutput) : null;
 	const deleteOutput = isDelete && videoOutput ? (videoOutput as BifrostVideoDeleteOutput) : null;
 	const generationOutput = !isDownload && !isDelete && videoOutput ? (videoOutput as BifrostVideoGenerationOutput) : null;
-	const videos = generationOutput?.videos?.filter((video) => video.url || video.base64) ?? [];
+	// Image outputs (a Seedance task's last frame) are not playable in a <video> element.
+	const videos = generationOutput?.videos?.filter((video) => (video.url || video.base64) && !video.content_type?.startsWith("image/")) ?? [];
 
 	return (
 		<div className="space-y-4">
