@@ -20,7 +20,7 @@ import {
 	MCPTLSConfig,
 	SecretVar,
 } from "@/lib/types/mcp";
-import { isHTTPSOrLoopbackURL, mcpOpenAPIConfigSchema } from "@/lib/types/schemas";
+import { isHTTPSOrLoopbackURL, isSecretVarSet, mcpOpenAPIConfigSchema } from "@/lib/types/schemas";
 import { parseArrayFromText } from "@/lib/utils/array";
 import { useGetSCIMProvidersQuery } from "@enterprise/lib/store/apis/scimApi";
 import { Info } from "lucide-react";
@@ -367,10 +367,23 @@ export function validateMCPClientForm({
 				setError("token_exchange.resource_client_id", { message: "Client ID at the upstream server is required for Cross App Access" });
 				hasErrors = true;
 			}
+			if (isSecretVarSet(data.token_exchange?.resource_client_secret) && isSecretVarSet(data.token_exchange?.resource_private_key)) {
+				setError("token_exchange.resource_private_key", {
+					message: "Use either a client secret or a private key at the upstream server, not both",
+				});
+				hasErrors = true;
+			}
 			const endpoint = data.token_exchange?.resource_token_endpoint?.trim();
 			if (endpoint && !isHTTPSOrLoopbackURL(endpoint)) {
 				setError("token_exchange.resource_token_endpoint", {
 					message: "Token endpoint must be an https URL (http is allowed only for localhost)",
+				});
+				hasErrors = true;
+			}
+			const assertionAudience = data.token_exchange?.resource_assertion_audience?.trim();
+			if (assertionAudience && !isHTTPSOrLoopbackURL(assertionAudience)) {
+				setError("token_exchange.resource_assertion_audience", {
+					message: "Assertion audience must be an https URL (http is allowed only for localhost)",
 				});
 				hasErrors = true;
 			}
