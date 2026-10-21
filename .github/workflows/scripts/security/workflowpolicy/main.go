@@ -4,6 +4,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -14,7 +15,12 @@ import (
 // check returns every policy violation without executing workflow contents.
 func check(document workflows.Workflow, filename string) []string {
 	var failures []string
-	if _, found := workflows.Triggers(document.On)["pull_request_target"]; found {
+	triggers := workflows.Triggers(document.On)
+	_, manual := triggers["workflow_dispatch"]
+	if filename == "network-security-validation.yml" && (!manual || len(triggers) != 1) {
+		failures = append(failures, "live network diagnostics must be manual-only")
+	}
+	if _, found := triggers["pull_request_target"]; found {
 		failures = append(failures, "pull_request_target requires a separate security design")
 	}
 	permissions, ok := document.Permissions.(map[string]any)
@@ -22,9 +28,31 @@ func check(document workflows.Workflow, filename string) []string {
 		failures = append(failures, "workflow must not default to repository write access")
 	}
 	for name, job := range document.Jobs {
+		if filename == "network-security-validation.yml" && job.Environment != "pr-testing" {
+			failures = append(failures, name+": live network diagnostics require admin approval")
+		}
 		references := append([]workflows.Step{{Uses: job.Uses}}, job.Steps...)
 		for _, step := range references {
+			if filename != "network-security-validation.yml" && strings.Contains(step.Run, "curl") &&
+				regexp.MustCompile(`https?://(?:raw\.githubusercontent\.com|raw\.github\.com|gist\.githubusercontent\.com)(?:/|\s|$)`).MatchString(step.Run) {
+				failures = append(failures, name+": live raw-content probes belong only in the manual network diagnostic")
+			}
 			uses := step.Uses
+			if strings.HasPrefix(uses, "step-security/harden-runner@") {
+				for _, endpoint := range strings.Fields(workflows.String(step.With, "allowed-endpoints")) {
+					if !regexp.MustCompile(`^[a-zA-Z0-9.*_-]+:[0-9]{1,5}$`).MatchString(endpoint) {
+						failures = append(failures, name+": invalid host:port endpoint "+endpoint)
+						continue
+					}
+					host := strings.TrimSuffix(strings.ToLower(endpoint[:strings.LastIndex(endpoint, ":")]), ".")
+					for _, blocked := range []string{"raw.githubusercontent.com", "raw.github.com", "gist.githubusercontent.com"} {
+						if matches, _ := path.Match(host, blocked); matches {
+							failures = append(failures, name+": "+endpoint+" opens arbitrary GitHub raw content")
+							break
+						}
+					}
+				}
+			}
 			if uses != "" && !strings.HasPrefix(uses, "./") {
 				pattern := `^.+@[0-9a-f]{40}$`
 				if strings.HasPrefix(uses, "docker://") {
