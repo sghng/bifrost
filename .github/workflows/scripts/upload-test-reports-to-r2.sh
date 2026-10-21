@@ -35,6 +35,14 @@ VERSION="${1#v}"
 LABEL="$2"
 SOURCE_DIR="$3"
 
+# Treat report artifacts as untrusted data; they must not select object keys
+# outside the reports prefix or make the uploader follow filesystem links.
+if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$ ]] ||
+   [[ ! "$LABEL" =~ ^(provider-harness|cli-harness-[a-z0-9-]+)$ ]]; then
+  echo "Invalid report version or label" >&2
+  exit 1
+fi
+
 if [ -z "${R2_ENDPOINT:-}" ] || [ -z "${R2_BUCKET:-}" ]; then
   echo "::warning::R2 not configured (R2_ENDPOINT/R2_BUCKET unset) - skipping test report upload for $LABEL"
   exit 0
@@ -65,6 +73,7 @@ upload() {
     --profile "${R2_AWS_PROFILE:-R2}" \
     --no-progress \
     --recursive \
+    --no-follow-symlinks \
     --exclude "*" \
     --include "$include" \
     --content-type "$content_type"
